@@ -43,6 +43,7 @@ typedef enum
 
 extern int flashStatus;
 extern uint8_t flashSlaveFSM( void );
+extern void byteFromSlave( void );
 
 #ifdef __cplusplus
 }

@@ -157,29 +157,7 @@ void USART2_IRQHandler(void)
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 	
 	if (huart == &huart2) {
-		// Clear Rx_Buffer before receiving new data
-		if (rxIndex == 0) {
-			memset(rxBuffer,'\0',200);
-		} 
-		// Clear Rx_Buffer before receiving new data				
-		if (rxIndex >= 200) {
-			memset(rxBuffer,'\0',200);
-			rxIndex = 0;
-		}
-		rxBuffer[rxIndex] = rxData[0];
-		rxIndex++;
-		if(rxData[0] == ACK || rxData[0] == NACK){
-			rxReady = 1;
-			if(rxData[0] == ACK){
-				gotACK = 1;
-				rxIndex = 0;
-			}
-			if(rxData[0] == NACK){
-				gotNACK = 1;
-				rxIndex = 0;
-			}			
-		}
-		HAL_UART_Receive_IT(&huart2, rxData, 1);
+		byteFromSlave();
 	}
 }
 /* USER CODE END 1 */

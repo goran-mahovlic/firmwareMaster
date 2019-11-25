@@ -39,6 +39,7 @@ extern uint8_t rxBuffer[], rxData[],rxIndex;
 extern uint8_t rxReady, gotACK, gotNACK;
 extern uint8_t ACK;
 extern uint8_t NACK;
+extern void byteFromSlave( void );
 
 /* USER CODE END Includes */
 

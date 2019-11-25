@@ -41,20 +41,20 @@ int flashStatus = STAND_BY;
 uint8_t crc; 
 
 void sendDataAndCRC(uint8_t data){
-					uint8_t sendData[1];
-					sendData[0] = data;
-					HAL_UART_Transmit_IT(&huart2, sendData, 1);
-					HAL_Delay(1);
-				  sendData[0]  = CRC_MASK ^ data;
-					HAL_UART_Transmit_IT(&huart2, sendData, 1);
-					HAL_Delay(1);
+	uint8_t sendData[1];
+	sendData[0] = data;
+	HAL_UART_Transmit_IT(&huart2, sendData, 1);
+	HAL_Delay(1);
+	sendData[0]  = CRC_MASK ^ data;
+	HAL_UART_Transmit_IT(&huart2, sendData, 1);
+	HAL_Delay(1);
 }
 
 void sendDataNoCRC(uint8_t data){
-					uint8_t sendData[1];
-					sendData[0] = data;
-					HAL_UART_Transmit_IT(&huart2, sendData, 1);
-					HAL_Delay(1);
+	uint8_t sendData[1];
+	sendData[0] = data;
+	HAL_UART_Transmit_IT(&huart2, sendData, 1);
+	HAL_Delay(1);
 }
 
 void resetSlave( void ){
@@ -67,56 +67,77 @@ uint8_t flashSlaveFSM( ){
     {
         case STAND_BY:
           // statements
-					resetSlave();
-					
-					flashStatus = SEND_START;
+			resetSlave();
+			flashStatus = SEND_START;
           break;
         case WAIT_FOR_RESPONSE:
-					if(rxReady){
-						if(gotACK) {
-							flashStatus = GOT_ACK;
-							rxReady = 0;
-							gotACK = 0;
-							gotNACK = 0;
-						}
-						else if (gotNACK){
-							flashStatus = GOT_NACK;
-							rxReady = 0;
-							gotACK = 0;
-							gotNACK = 0;
-						}
-					}
-					if(HAL_GetTick()- timeout > maxTimeout){
-						flashStatus = STAND_BY;
-					}
+			if(rxReady){
+				if(gotACK) {
+					flashStatus = GOT_ACK;
+					rxReady = 0;
+					gotACK = 0;
+					gotNACK = 0;
+				}
+				else if (gotNACK){
+					flashStatus = GOT_NACK;
+					rxReady = 0;
+					gotACK = 0;
+					gotNACK = 0;
+				}
+			}
+			if(HAL_GetTick()- timeout > maxTimeout){
+				flashStatus = STAND_BY;
+			}
           break;
         case SEND_START:
-          // statements
-					sendDataNoCRC(ENTER_BOOTLOADER);
-					timeout = HAL_GetTick();
-					flashStatus = WAIT_FOR_RESPONSE;				
+			sendDataNoCRC(ENTER_BOOTLOADER);
+			timeout = HAL_GetTick();
+			flashStatus = WAIT_FOR_RESPONSE;
           break;
         case GOT_ACK:
-					HAL_Delay(100);
-					flashStatus = SEND_GET;
+			HAL_Delay(100);
+			flashStatus = SEND_GET;
           break;
         case GOT_NACK:
 					HAL_Delay(100);
 					flashStatus = SEND_GET;
           break;
         case RESPONSE_TIMEOUT:
-          // statements
           break;
         case SEND_GET:
-          // statements
-					sendDataAndCRC(CMD_ID);
-					timeout = HAL_GetTick();
-					flashStatus = WAIT_FOR_RESPONSE;
+			sendDataAndCRC(CMD_ID);
+			timeout = HAL_GetTick();
+			flashStatus = WAIT_FOR_RESPONSE;
           break;
 				
         default:
-					flashStatus = STAND_BY;
-          // default statements
+			flashStatus = STAND_BY;
     }
 		return flashStatus;
+}
+
+void byteFromSlave( void ){
+		// Clear Rx_Buffer before receiving new data
+		if (rxIndex == 0) {
+			memset(rxBuffer,'\0',200);
+		} 
+		// Clear Rx_Buffer before receiving new data				
+		if (rxIndex >= 200) {
+			memset(rxBuffer,'\0',200);
+			rxIndex = 0;
+		}
+		rxBuffer[rxIndex] = rxData[0];
+		rxIndex++;
+		if(rxData[0] == ACK || rxData[0] == NACK){
+			rxReady = 1;
+			if(rxData[0] == ACK){
+				gotACK = 1;
+				rxIndex = 0;
+			}
+			if(rxData[0] == NACK){
+				gotNACK = 1;
+				rxIndex = 0;
+			}			
+		}
+		HAL_UART_Receive_IT(&huart2, rxData, 1);
 }
