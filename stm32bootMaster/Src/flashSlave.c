@@ -1,21 +1,21 @@
 /* USER CODE BEGIN Header */
 /**
   ******************************************************************************
-  * @file    flashSlave.c
-  * @brief   FSM for flashing slave firmaware
+    @file    flashSlave.c
+    @brief   FSM for flashing slave firmaware
   ******************************************************************************
-  * @attention
-  *
-  * <h2><center>&copy; Copyright (c) 2019 Envox d.o.o.
-  * All rights reserved.</center></h2>
-  *
-  * This software component is licensed under BSD 3-Clause license,
-  * the "License"; You may not use this file except in compliance with the
-  * License. You may obtain a copy of the License at:
-  *                        opensource.org/licenses/BSD-3-Clause
-  *
+    @attention
+
+    <h2><center>&copy; Copyright (c) 2019 Envox d.o.o.
+    All rights reserved.</center></h2>
+
+    This software component is licensed under BSD 3-Clause license,
+    the "License"; You may not use this file except in compliance with the
+    License. You may obtain a copy of the License at:
+                           opensource.org/licenses/BSD-3-Clause
+
   ******************************************************************************
-  */
+*/
 /* USER CODE END Header */
 #include "flashSlave.h"
 
@@ -38,106 +38,108 @@ uint8_t CRC_MASK = 0xFF;
 long maxTimeout = 2000;
 long timeout;
 int flashStatus = STAND_BY;
-uint8_t crc; 
+uint8_t crc;
 
-void sendDataAndCRC(uint8_t data){
-	uint8_t sendData[1];
-	sendData[0] = data;
-	HAL_UART_Transmit_IT(&huart2, sendData, 1);
-	HAL_Delay(1);
-	sendData[0]  = CRC_MASK ^ data;
-	HAL_UART_Transmit_IT(&huart2, sendData, 1);
-	HAL_Delay(1);
+void sendDataAndCRC(uint8_t data) {
+  uint8_t sendData[1];
+  sendData[0] = data;
+  HAL_UART_Transmit(&huart2, sendData, 1, 100);
+  HAL_Delay(1);
+  sendData[0]  = CRC_MASK ^ data;
+  HAL_UART_Transmit(&huart2, sendData, 1, 100);
+  HAL_Delay(1);
 }
 
-void sendDataNoCRC(uint8_t data){
-	uint8_t sendData[1];
-	sendData[0] = data;
-	HAL_UART_Transmit_IT(&huart2, sendData, 1);
-	HAL_Delay(1);
+void sendDataNoCRC(uint8_t data) {
+  uint8_t sendData[1];
+  sendData[0] = data;
+  HAL_UART_Transmit(&huart2, sendData, 1, 100);
+  HAL_Delay(1);
 }
 
-void resetSlave( void ){
-// not implemented -- I do manual reset
-	HAL_Delay(3000);
+void resetSlave( void ) {
+  // not implemented -- I do manual reset
+  HAL_Delay(3000);
 }
 
-uint8_t flashSlaveFSM( ){
-    switch (flashStatus)
-    {
-        case STAND_BY:
-          // statements
-			resetSlave();
-			flashStatus = SEND_START;
-          break;
-        case WAIT_FOR_RESPONSE:
-			if(rxReady){
-				if(gotACK) {
-					flashStatus = GOT_ACK;
-					rxReady = 0;
-					gotACK = 0;
-					gotNACK = 0;
-				}
-				else if (gotNACK){
-					flashStatus = GOT_NACK;
-					rxReady = 0;
-					gotACK = 0;
-					gotNACK = 0;
-				}
-			}
-			if(HAL_GetTick()- timeout > maxTimeout){
-				flashStatus = STAND_BY;
-			}
-          break;
-        case SEND_START:
-			sendDataNoCRC(ENTER_BOOTLOADER);
-			timeout = HAL_GetTick();
-			flashStatus = WAIT_FOR_RESPONSE;
-          break;
-        case GOT_ACK:
-			HAL_Delay(100);
-			flashStatus = SEND_GET;
-          break;
-        case GOT_NACK:
-					HAL_Delay(100);
-					flashStatus = SEND_GET;
-          break;
-        case RESPONSE_TIMEOUT:
-          break;
-        case SEND_GET:
-			sendDataAndCRC(CMD_ID);
-			timeout = HAL_GetTick();
-			flashStatus = WAIT_FOR_RESPONSE;
-          break;
-				
-        default:
-			flashStatus = STAND_BY;
+uint8_t flashSlaveFSM( ) {
+  switch (flashStatus)
+  {
+    case STAND_BY:
+      // statements
+      resetSlave();
+      flashStatus = SEND_START;
+      break;
+    case WAIT_FOR_RESPONSE:
+      if (HAL_UART_Receive(&huart2, rxData, 1, 20) == HAL_OK) {
+        byteFromSlave();
+      }
+      if (rxReady) {
+        if (gotACK) {
+          flashStatus = GOT_ACK;
+          rxReady = 0;
+          gotACK = 0;
+          gotNACK = 0;
+        }
+        else if (gotNACK) {
+          flashStatus = GOT_NACK;
+          rxReady = 0;
+          gotACK = 0;
+          gotNACK = 0;
+        }
+      }
+      if (HAL_GetTick() - timeout > maxTimeout) {
+        flashStatus = STAND_BY;
+      }
+      break;
+    case SEND_START:
+      sendDataNoCRC(ENTER_BOOTLOADER);
+      timeout = HAL_GetTick();
+      flashStatus = WAIT_FOR_RESPONSE;
+      break;
+    case GOT_ACK:
+      HAL_Delay(100);
+      flashStatus = SEND_GET;
+      break;
+    case GOT_NACK:
+      HAL_Delay(100);
+      flashStatus = SEND_GET;
+      break;
+    case RESPONSE_TIMEOUT:
+      break;
+    case SEND_GET:
+      sendDataAndCRC(CMD_ID);
+      timeout = HAL_GetTick();
+      flashStatus = WAIT_FOR_RESPONSE;
+      break;
+
+    default:
+      flashStatus = STAND_BY;
+  }
+  return flashStatus;
+}
+
+void byteFromSlave( void ) {
+  // Clear Rx_Buffer before receiving new data
+  if (rxIndex == 0) {
+    memset(rxBuffer, '\0', 200);
+  }
+  // Clear Rx_Buffer before receiving new data
+  if (rxIndex >= 200) {
+    memset(rxBuffer, '\0', 200);
+    rxIndex = 0;
+  }
+  rxBuffer[rxIndex] = rxData[0];
+  rxIndex++;
+  if (rxData[0] == ACK || rxData[0] == NACK) {
+    rxReady = 1;
+    if (rxData[0] == ACK) {
+      gotACK = 1;
+      rxIndex = 0;
     }
-		return flashStatus;
-}
-
-void byteFromSlave( void ){
-		// Clear Rx_Buffer before receiving new data
-		if (rxIndex == 0) {
-			memset(rxBuffer,'\0',200);
-		} 
-		// Clear Rx_Buffer before receiving new data				
-		if (rxIndex >= 200) {
-			memset(rxBuffer,'\0',200);
-			rxIndex = 0;
-		}
-		rxBuffer[rxIndex] = rxData[0];
-		rxIndex++;
-		if(rxData[0] == ACK || rxData[0] == NACK){
-			rxReady = 1;
-			if(rxData[0] == ACK){
-				gotACK = 1;
-				rxIndex = 0;
-			}
-			if(rxData[0] == NACK){
-				gotNACK = 1;
-				rxIndex = 0;
-			}			
-		}
-		HAL_UART_Receive_IT(&huart2, rxData, 1);
+    if (rxData[0] == NACK) {
+      gotNACK = 1;
+      rxIndex = 0;
+    }
+  }
 }
