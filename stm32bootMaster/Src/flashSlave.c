@@ -35,31 +35,30 @@ uint8_t ENTER_BOOTLOADER = 0x7F;
 uint8_t CRC_MASK = 0xFF;
 
 
-long maxTimeout = 2000;
-long timeout;
+long maxTimeout = 1000;
+long timeoutNextMax = 200;
+long timeout,timeoutNext;
 int flashStatus = STAND_BY;
 uint8_t crc;
 
 void sendDataAndCRC(uint8_t data) {
   uint8_t sendData[1];
   sendData[0] = data;
-  HAL_UART_Transmit(&huart2, sendData, 1, 100);
-  HAL_Delay(1);
+  HAL_UART_Transmit(&huart2, sendData, 1, 20);
   sendData[0]  = CRC_MASK ^ data;
-  HAL_UART_Transmit(&huart2, sendData, 1, 100);
-  HAL_Delay(1);
+  HAL_UART_Transmit(&huart2, sendData, 1, 20);
 }
 
 void sendDataNoCRC(uint8_t data) {
   uint8_t sendData[1];
   sendData[0] = data;
-  HAL_UART_Transmit(&huart2, sendData, 1, 100);
-  HAL_Delay(1);
+  HAL_UART_Transmit(&huart2, sendData, 1, 20);
 }
 
 void resetSlave( void ) {
   // not implemented -- I do manual reset
-  HAL_Delay(3000);
+	timeoutNext = HAL_GetTick();
+  flashStatus = WAIT_FOR_NEXT_TRANSMIT;
 }
 
 uint8_t flashSlaveFSM( ) {
@@ -71,7 +70,7 @@ uint8_t flashSlaveFSM( ) {
       flashStatus = SEND_START;
       break;
     case WAIT_FOR_RESPONSE:
-      if (HAL_UART_Receive(&huart2, rxData, 1, 20) == HAL_OK) {
+			if(HAL_UART_Receive(&huart2, rxData, 1, 1)){
         byteFromSlave();
       }
       if (rxReady) {
@@ -89,7 +88,7 @@ uint8_t flashSlaveFSM( ) {
         }
       }
       if (HAL_GetTick() - timeout > maxTimeout) {
-        flashStatus = STAND_BY;
+				flashStatus = RESPONSE_TIMEOUT;
       }
       break;
     case SEND_START:
@@ -98,21 +97,30 @@ uint8_t flashSlaveFSM( ) {
       flashStatus = WAIT_FOR_RESPONSE;
       break;
     case GOT_ACK:
-      HAL_Delay(100);
-      flashStatus = SEND_GET;
+      flashStatus = DATA_READY;
       break;
     case GOT_NACK:
-      HAL_Delay(100);
-      flashStatus = SEND_GET;
+      flashStatus = DATA_READY;
       break;
     case RESPONSE_TIMEOUT:
+			  flashStatus = STAND_BY;
       break;
+    case DATA_READY:
+      timeout = HAL_GetTick();
+			timeoutNext = HAL_GetTick();
+      flashStatus = SEND_GET;
+      break;
+    case WAIT_FOR_NEXT_TRANSMIT:
+			if((HAL_GetTick() - timeoutNext) > timeoutNextMax){
+				flashStatus = SEND_GET;
+			}
+		break;
     case SEND_GET:
       sendDataAndCRC(CMD_ID);
       timeout = HAL_GetTick();
+		  timeoutNext = HAL_GetTick();
       flashStatus = WAIT_FOR_RESPONSE;
       break;
-
     default:
       flashStatus = STAND_BY;
   }
