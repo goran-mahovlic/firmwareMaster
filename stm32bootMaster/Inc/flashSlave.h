@@ -38,12 +38,30 @@ typedef enum
 	GOT_ACK,
 	GOT_NACK,
 	RESPONSE_TIMEOUT,
+	DATA_READY,
+	WAIT_FOR_NEXT_TRANSMIT,
 	SEND_GET
 } 	flash_status_t;
 
+typedef enum
+{
+	IDLE,
+	RESET_TIME,
+	DELAY_BEFORE_NEXT_TRANSMIT,
+	SEND_DATA,
+	WAIT_FOR_ANSWER,
+	ACK_RECEIVED,
+	NACK_RECEIVED,
+	TIMEOUT,
+	DATA_IS_READY,
+	DATA_SEND_ERROR
+} send_data_status_t;
+
+extern int sendDataStatus;
 extern int flashStatus;
 extern uint8_t flashSlaveFSM( void );
 extern void byteFromSlave( void );
+uint8_t sendData(uint8_t *sendData, uint16_t sendSize, uint8_t sendCRC);
 
 #ifdef __cplusplus
 }

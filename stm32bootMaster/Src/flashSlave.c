@@ -34,12 +34,30 @@ uint8_t CMD_READOUT_UNPROTECT = 0x92;
 uint8_t ENTER_BOOTLOADER = 0x7F;
 uint8_t CRC_MASK = 0xFF;
 
-
 long maxTimeout = 1000;
 long timeoutNextMax = 200;
 long timeout,timeoutNext;
 int flashStatus = STAND_BY;
+int sendDataStatus = IDLE;
 uint8_t crc;
+uint8_t bootloader = 0;
+uint8_t bytes;
+uint8_t nackCounter;
+uint8_t maxNackAllowed = 5;
+
+uint8_t sendData(uint8_t *sendData, uint16_t sendSize, uint8_t sendCRC){
+	HAL_UART_Transmit(&huart2, sendData, sendSize, 20);
+	if(sendCRC){
+		/*
+		for(int i=0;i<sendSize;i++){
+			crc = CRC_MASK ^ sendData[i];
+		}
+		*/
+		crc = CRC_MASK ^ sendData[0];
+		HAL_UART_Transmit(&huart2, &crc, 1, 20);
+	}
+	return 1;
+}
 
 void sendDataAndCRC(uint8_t data) {
   uint8_t sendData[1];
@@ -70,7 +88,13 @@ uint8_t flashSlaveFSM( ) {
       flashStatus = SEND_START;
       break;
     case WAIT_FOR_RESPONSE:
-			if(HAL_UART_Receive(&huart2, rxData, 1, 1)){
+			if (bootloader){
+				bytes = 4;
+			}
+			else{
+				bytes = 1;
+			}
+			if(HAL_UART_Receive(&huart2, rxData, bytes, 10)){
         byteFromSlave();
       }
       if (rxReady) {
@@ -108,7 +132,7 @@ uint8_t flashSlaveFSM( ) {
     case DATA_READY:
       timeout = HAL_GetTick();
 			timeoutNext = HAL_GetTick();
-      flashStatus = SEND_GET;
+      flashStatus = WAIT_FOR_NEXT_TRANSMIT;
       break;
     case WAIT_FOR_NEXT_TRANSMIT:
 			if((HAL_GetTick() - timeoutNext) > timeoutNextMax){
@@ -116,7 +140,8 @@ uint8_t flashSlaveFSM( ) {
 			}
 		break;
     case SEND_GET:
-      sendDataAndCRC(CMD_ID);
+			bootloader = 1;
+      sendDataAndCRC(CMD_GET_VERSION);
       timeout = HAL_GetTick();
 		  timeoutNext = HAL_GetTick();
       flashStatus = WAIT_FOR_RESPONSE;
@@ -150,4 +175,81 @@ void byteFromSlave( void ) {
       rxIndex = 0;
     }
   }
+}
+
+uint8_t sendDataToBootloader(uint8_t *transmitData, uint8_t *receiveData, uint16_t sendSize, uint16_t receiveSize, uint8_t sendCRC){
+  switch (sendDataStatus)
+  {
+    case IDLE:
+      // Just wait here if data is not needed
+			nackCounter = 0;
+      break;
+		case RESET_TIME:
+			// Reset timmer counter so we can wait for next transmit
+			timeoutNext = HAL_GetTick();
+			sendDataStatus = DELAY_BEFORE_NEXT_TRANSMIT;
+			break;
+    case DELAY_BEFORE_NEXT_TRANSMIT:
+			// Wait untils we can start next transmition
+			if((HAL_GetTick() - timeoutNext) > timeoutNextMax){
+				sendDataStatus = SEND_DATA;
+      }
+      break;
+    case SEND_DATA:
+				// Send data to slave board
+				sendData(transmitData, sendSize, sendCRC);
+				sendDataStatus = WAIT_FOR_ANSWER;
+      break;
+    case WAIT_FOR_ANSWER:
+      // Wait for the slave board answer
+			if(HAL_UART_Receive(&huart2, receiveData, receiveSize, 10)){
+        byteFromSlave();
+      }
+      if (rxReady) {
+        if (gotACK) {
+          sendDataStatus = ACK_RECEIVED;
+        }
+        else if (gotNACK) {
+          sendDataStatus = NACK_RECEIVED;
+        }
+				rxReady = 0;
+				gotACK = 0;
+				gotNACK = 0;
+      }
+			// Constantly check for global timeout
+      if (HAL_GetTick() - timeout > maxTimeout) {
+				sendDataStatus = TIMEOUT;
+      }
+      break;
+    case ACK_RECEIVED:
+      // We got answer and data is ready
+			sendDataStatus = DATA_IS_READY;
+      break;
+    case NACK_RECEIVED:
+      // We got answer but not data 
+			nackCounter++;
+			if(nackCounter>maxNackAllowed){
+				sendDataStatus = IDLE;
+				return 0;
+			}
+			else{
+				sendDataStatus = RESET_TIME;
+			}
+      break;
+    case TIMEOUT:
+			sendDataStatus = IDLE;			
+			return 2;
+			// Answer did not arrive timeoutCounter++;
+    case DATA_IS_READY:
+      // Data is ready for readout
+			sendDataStatus = IDLE;
+			return 1;
+    case DATA_SEND_ERROR:
+      // statements
+			sendDataStatus = IDLE;		
+			return 3;	
+		default:
+			sendDataStatus = DATA_SEND_ERROR;
+	}
+	return 0;
 }

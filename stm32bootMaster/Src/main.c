@@ -26,7 +26,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-	uint8_t rxBuffer[200], rxData[2],rxIndex;
+	uint8_t rxBuffer[200], rxData[200],rxIndex;
 	uint8_t rxReady = 0;
 	uint8_t gotACK = 0;
 	uint8_t gotNACK = 0;
